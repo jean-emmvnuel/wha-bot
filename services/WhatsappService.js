@@ -1,7 +1,6 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
 
 class WhatsappService {
@@ -10,19 +9,26 @@ class WhatsappService {
         this.isConnected = false;
         this.qrCode = null;
         this.startTime = null;
+        this.lastCommandTime = null;
+        this.sessionPath = '/tmp/.wwebjs_auth'; // Dossier persistant Render
     }
 
     async connect() {
         if (this.client) {
-            await this.cleanup();
+            return { success: true, message: 'Déjà connecté' };
         }
 
         try {
-            console.log('🔄 Démarrage du bot WhatsApp...');
+            console.log('🚀 Démarrage du bot WhatsApp ultra-rapide...');
+            console.log('📁 Dossier session:', this.sessionPath);
+            
+            // Assurer que le dossier session existe
+            await this.ensureSessionDir();
             
             this.client = new Client({
                 authStrategy: new LocalAuth({
-                    clientId: "nobodys-bot"
+                    clientId: "nobodys-bot-render",
+                    dataPath: this.sessionPath // Session dans /tmp/
                 }),
                 puppeteer: {
                     headless: true,
@@ -30,23 +36,38 @@ class WhatsappService {
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
+                        '--single-process',
                         '--no-zygote',
-                        '--disable-gpu'
+                        '--disable-gpu',
+                        '--disable-extensions',
+                        '--disable-background-timer-throttling'
                     ]
+                },
+                webVersionCache: {
+                    type: 'remote',
+                    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
                 }
             });
 
             this.setupClientEvents();
-            await this.client.initialize();
+            this.client.initialize().catch(error => {
+                console.error('❌ Erreur initialisation:', error.message);
+            });
 
-            return { succes: true };
+            return { success: true };
 
         } catch (error) {
             console.error('❌ Erreur connexion:', error);
-            await this.cleanup();
-            return { succes: false, error: error.message };
+            return { success: false, error: error.message };
+        }
+    }
+
+    async ensureSessionDir() {
+        try {
+            await fs.mkdir(this.sessionPath, { recursive: true });
+            console.log('✅ Dossier session créé:', this.sessionPath);
+        } catch (error) {
+            // Le dossier existe déjà
         }
     }
 
@@ -61,313 +82,259 @@ class WhatsappService {
             this.isConnected = true;
             this.qrCode = null;
             this.startTime = Date.now();
+            this.logSessionStatus();
         });
 
-        this.client.on('disconnected', () => {
-            console.log('🔌 Bot déconnecté');
-            this.isConnected = false;
-            this.startTime = null;
+        this.client.on('authenticated', () => {
+            console.log('🔐 Authentification réussie - Session sauvegardée');
         });
 
-        // SEULEMENT LES MESSAGES QUE VOUS ENVOYEZ
+        this.client.on('auth_failure', (msg) => {
+            console.log('❌ Échec authentification:', msg);
+            this.cleanSession();
+        });
+
+        this.client.on('disconnected', (reason) => {
+            console.log('🔌 Déconnecté:', reason);
+            this.handleDisconnection();
+        });
+
+        // Gestion ultra-rapide des messages
         this.client.on('message_create', async (message) => {
             await this.handleOutgoingMessage(message);
         });
     }
 
-    // Traitement des messages QUE VOUS ENVOYEZ
-    async handleOutgoingMessage(message) {
-    try {
-        // Ignorer les messages de statut
-        if (message.to === 'status@broadcast') {
-            return;
+    async logSessionStatus() {
+        try {
+            const files = await fs.readdir(this.sessionPath);
+            console.log(`📁 Session active - ${files.length} fichiers`);
+        } catch (error) {
+            console.log('📁 Nouvelle session');
         }
+    }
 
-        // VÉRIFICATION PRINCIPALE : Uniquement VOS messages
-        if (!message.fromMe) {
-            // Optionnel: Log pour debug (à supprimer après test)
-            console.log(`🔇 Message ignoré - Expéditeur: ${message.from}, Vous: ${message.fromMe}`);
-            return;
-        }
+    async handleOutgoingMessage(message) {
+        // Vérifications minimales pour la rapidité
+        if (!message.fromMe || message.to === 'status@broadcast') return;
 
         const text = message.body?.trim();
-        if (!text || !text.startsWith('#')) {
-            return; // Ignorer les messages sans commande
-        }
+        if (!text || !text.startsWith('#')) return;
 
-        console.log(`🎯 VOTRE COMMANDE DÉTECTÉE: "${text}"`);
-        console.log(`📞 Conversation: ${message.to}`);
-
-        // Traiter la commande
+        this.lastCommandTime = Date.now();
+        console.log(`⚡ Commande reçue: "${text}"`);
+        
+        // Traitement IMMÉDIAT
         await this.handleCommand(message, text);
-
-    } catch (error) {
-        console.error('❌ Erreur traitement message:', error.message);
     }
-}
 
     async handleCommand(message, text) {
         const args = text.slice(1).split(' ');
         const command = args[0].toLowerCase();
 
-        console.log(`⚡ Exécution commande: ${command}`);
-
         try {
             switch (command) {
                 case 'start':
-                    await this.handleStartCommand(message);
+                    message.reply("Salut ! Je suis *Nobody*, ton bot WhatsApp ultra-rapide 🤖\nTape #help pour voir toutes les commandes disponibles");
                     break;
                     
                 case 'ping':
-                    await this.handlePingCommand(message);
+                    const responseTime = this.lastCommandTime ? Date.now() - this.lastCommandTime + 'ms' : 'N/A';
+                    message.reply(`nobody's bot🤖\n\n🤖 Pong 🚀!\n⚡ Rapidité: ${responseTime}`);
                     break;
 
                 case 'owner':
-                    await this.handleOwnerCommand(message);
+                    message.reply(`*Propriétaires officiels de nobody's bot🤖*\n\n⭐ *👑 Jean Emmanuel Ahossi*\n🎯 Fondateur & Développeur principal\n📞 https://wa.me/2250704526437\n\n⭐ *🔥 Emmanuel Bilson*\n🎯 Co-développeur & Designer\n📞 https://wa.me/2250799637242\n\n👥 Nous sommes 2 étudiants de l'IUA 💙`);
                     break;
 
                 case 'help':
-                    await this.handleHelpCommand(message);
+                    message.reply(`🤖 *NOBODY'S BOT* - Commandes Ultra-Rapides\n\n
+#start - Introduction du bot
+#ping - Test de rapidité
+#owner - Contacter les propriétaires  
+#help - Menu des commandes
+#tagall - Mentionner tous les membres (groupes)
+#pp - Photo de profil d'un contact
+#info - Informations du groupe
+#status - Statut du bot`);
                     break;
                     
                 case 'tagall':
-                    await this.handleTagAllCommand(message);
+                    this.handleTagAllCommand(message);
                     break;
                     
                 case 'pp':
-                    await this.handlePpCommand(message, args.slice(1));
+                    this.handlePpCommand(message, args.slice(1));
                     break;
                     
                 case 'info':
-                    await this.handleInfoCommand(message);
+                    this.handleInfoCommand(message);
                     break;
 
                 case 'status':
-                    await this.handleStatutCommand(message, args.slice(1));
+                    this.handleStatutCommand(message);
                     break;
 
                 default:
-                    await message.reply(`nobody's bot🤖\n\n❌ Commande inconnue. Tapez #help`);
-                    console.log(`nobody's bot🤖\n\n❌ Commande inconnue: ${command}`);
+                    message.reply("nobody's bot🤖\n\n❌ Commande inconnue. Tapez #help pour voir le menu complet");
             }
-
         } catch (error) {
-            console.error(`nobody's bot🤖\n\n💥 Erreur commande ${command}:`, error.message);
+            console.error(`💥 Erreur commande ${command}:`, error.message);
+            message.reply("nobody's bot🤖\n\n❌ Erreur lors de l'exécution de la commande");
         }
     }
-    async handleOwnerCommand(message) {
-        const owners = [
-            {
-                nom: "👑 Jean Emmanuel Ahossi",
-                roles: "Fondateur,Développeur principal",
-                whatsapp: "https://wa.me/2250704526437",  // 🔹 Remplace par ton vrai lien
-                // porfolio: "https://jeanemmanuelahossi.netlify.app/"
-            },
-            {
-                nom: "🔥 Emmanuel Bilson",
-                roles: "Co-développeur, Testeur & designer ",
-                whatsapp: "https://wa.me/2250799637242",
-                // portfolio: "https://emmanuel-bilson.netlify.app/"
-            }
-        ];
-
-        // 🧾 Création du message de présentation
-        let presentation = "*Propriétaires officiels de nobody's bot🤖*\n\n";
-        owners.forEach(owner => {
-            presentation += `⭐ *${owner.nom}*\n`;
-            presentation += `🎯 ${owner.roles}\n`;
-            presentation += `📞 WhatsApp: ${owner.whatsapp}\n`;
-            // presentation += `💼 LinkedIn: ${owner.porfolio}\n`;
-        });
-
-        await message.reply(presentation+"\n\n\n👥 Nous sommes 2 etudiants de l'IUA💙");
-        console.log("✅ Présentation des propriétaires envoyée !");
-    } //c'est OK
-
-    async handleStatutCommand(message) {
-        const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
-
-        // Calcul des jours, heures, minutes et secondes
-        const days = Math.floor(uptimeSeconds / (24 * 60 * 60));
-        const hours = Math.floor((uptimeSeconds % (24 * 60 * 60)) / 3600);
-        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-        const seconds = uptimeSeconds % 60;
-
-        // Création d’un texte lisible
-        let uptimeString = "";
-        if (days > 0) uptimeString += `${days} jour${days > 1 ? 's' : ''}, `;
-        if (hours > 0) uptimeString += `${hours} heure${hours > 1 ? 's' : ''}, `;
-        if (minutes > 0) uptimeString += `${minutes} minute${minutes > 1 ? 's' : ''}, `;
-        uptimeString += `${seconds} seconde${seconds > 1 ? 's' : ''}`;
-
-        // Envoi du message
-        await message.reply(`nobody's bot🤖\n\n🤖 En ligne depuis ${uptimeString}`);
-
-    } //c'est OK
-
-    async handlePingCommand(message) {
-        const start = Date.now(); // 🕒 Temps de départ
-        const latency = Date.now() - start;
-
-        const output = "nobody's bot🤖\n\n🤖 Pong 🤣🤣!";
-
-        await message.reply(output);
-        console.log(`✅ Ping exécuté (${latency} ms)`);
-    } //c'est OK
-
-    async handleStartCommand(message) {
-        const messageText = `
-        Salut ! Je suis *Nobody*, ton bot WhatsApp 🤖\n\nJe peux t'aider avec plusieurs commandes utiles.\nPour voir toutes les fonctionnalités disponibles, tape : *#help*
-        `.trim();
-
-        await message.reply(messageText);
-        console.log('✅ Message de bienvenue envoyé : Nobody Bot');
-    } //c'est OK
-
-    async handleHelpCommand(message) {
-        const helpText = `
-    🤖 *NOBODY'S BOT* - Commandes\n\n\n\n#start - Intro du bot\n\n#ping - verifier si le bot recoit les commandes\n\n#tagall - Mentionner tous les membres d'un groupe (groupes uniquement)\n\n#pp - récupérer la photo de profil d'un utilisateur\n\n#info - Infos sur un groupe (groupes uniquement)\n\n#statut - Statut du bot\n\n#owner - Propriétaires du bot\n\n#help - ouvrir le menu contenant toutes les commandes`.trim();
-        
-        await message.reply(helpText);
-    } //c'est OK
 
     async handleTagAllCommand(message) {
         try {
             const chat = await message.getChat();
             if (!chat.isGroup) {
-                await message.reply("❌ Groupes uniquement");
+                message.reply("❌ Cette commande fonctionne uniquement dans les groupes");
                 return;
             }
 
-            console.log(`🏷️ Tagall dans le groupe: ${chat.name}`);
             const participants = chat.participants;
-        
-            // Vérifier s'il y a des participants
             if (participants.length === 0) {
-                await message.reply("❌ Aucun participant dans le groupe");
+                message.reply("❌ Aucun participant dans le groupe");
                 return;
             }
-            let mentionText = `Nobody's Whatsapp Bot🤖\n\n📢 **Mention des 👥 ${participants.length} membres du groupe:**\n\n`;
-        
-            // Préparer les mentions correctement
+            
+            let mentionText = `Nobody's Whatsapp Bot🤖\n\n📢 **Mention des 👥 ${participants.length} membres:**\n\n`;
             const mentions = [];
         
             participants.forEach(participant => {
-                const participantId = participant.id._serialized; // Format correct pour les mentions
-                mentionText += `@${participantId.split('@')[0]} `; // Juste le numéro pour l'affichage
-                mentions.push(participantId); // L'ID complet pour les mentions
+                const participantId = participant.id._serialized;
+                mentionText += `@${participantId.split('@')[0]} `;
+                mentions.push(participantId);
             });
 
-            console.log(`👥 ${participants.length} membres à mentionner`);
-        
-            // Envoyer le message avec mentions
-            await chat.sendMessage(mentionText, { mentions: mentions });
+            await chat.sendMessage(mentionText, { mentions });
             console.log(`✅ Tagall envoyé à ${participants.length} membres`);
 
         } catch (error) {
             console.error('❌ Erreur tagall:', error.message);
-            await message.reply('❌ Erreur lors de la mention de tous les membres');
+            message.reply('❌ Erreur lors de la mention des membres');
         }
-    } //c'est OK
+    }
 
     async handlePpCommand(message, params) {
         try {
             let contactId;
         
-            // Si un numéro est spécifié en paramètre
             if (params.length > 0 && params[0].match(/\d+/)) {
                 contactId = params[0].replace(/\D/g, '') + '@c.us';
-                console.log(`📸 Photo demandée pour le numéro: ${contactId}`);
-            } 
-            // Si on répond à un message
-            else if (message.hasQuotedMsg) {
+            } else if (message.hasQuotedMsg) {
                 const quotedMsg = await message.getQuotedMessage();
                 contactId = quotedMsg.author || quotedMsg.from;
-                console.log(`📸 Photo demandée pour l'auteur du message cité: ${contactId}`);
-            }
-                // Sinon, prendre l'interlocuteur (celui à qui on envoie le message)
-            else {
-                // Dans une conversation privée, message.to est l'interlocuteur
-                // Dans un groupe, message.to est le groupe et message.author est l'expéditeur
+            } else {
                 const chat = await message.getChat();
-                if (chat.isGroup) {
-                    // En groupe, on ne peut pas récupérer la PP de l'interlocuteur spécifique
-                    // On demande plutôt un numéro ou de citer un message
-                    await message.reply("❌ Dans un groupe, spécifiez un numéro ou répondez à un message avec #pp");
-                    console.log('❌ Commande PP dans un groupe sans paramètre');
+                contactId = chat.isGroup ? null : message.to;
+                if (!contactId) {
+                    message.reply("❌ Dans un groupe, spécifiez un numéro ou répondez à un message avec #pp");
                     return;
-                } else {
-                    // En conversation privée, l'interlocuteur est celui à qui on envoie le message
-                    contactId = message.to;
-                    console.log(`📸 Photo demandée pour l'interlocuteur en privé: ${contactId}`);
                 }
             }
 
-            // Récupérer le contact
             const contact = await this.client.getContactById(contactId);
             const profilePicUrl = await contact.getProfilePicUrl();
         
             if (profilePicUrl) {
                 const media = await MessageMedia.fromUrl(profilePicUrl);
-                await message.reply(media, null, {
-                caption: `nobody's bot🤖\n\n📸 Photo de profil`
-            });
-            console.log('✅ Photo de profil envoyée');
+                await message.reply(media, null, { 
+                    caption: `nobody's bot🤖\n\n📸 Photo de profil` 
+                });
+                console.log('✅ Photo de profil envoyée');
             } else {
                 await message.reply("nobody's bot🤖\n\n❌ Aucune photo de profil disponible");
-                console.log('❌ Aucune photo disponible');
             }
 
         } catch (error) {
-            console.error('❌ Erreur pp:', error.message);
-            await message.reply('❌ Erreur lors de la récupération de la photo de profil');
+            console.error('❌ Erreur photo profil:', error.message);
+            message.reply('❌ Erreur lors de la récupération de la photo');
         }
-    } //c'est OK
+    }
 
     async handleInfoCommand(message) {
         try {
             const chat = await message.getChat();
             if (!chat.isGroup) {
-                await message.reply('❌ Groupes uniquement');
+                message.reply('❌ Cette commande fonctionne uniquement dans les groupes');
                 return;
             }
 
-            console.log(`ℹ️ Info groupe: ${chat.name}`);
-        
-            // Récupérer les participants et compter les admins
             const participants = chat.participants;
             const adminCount = participants.filter(p => p.isAdmin || p.isSuperAdmin).length;
         
-            // Récupérer les infos du groupe
-            const infoText = `
-            nobody's bot🤖\n\n\n\n📊 *INFORMATIONS DU GROUPE*\n\n\n*Nom* : ${chat.name}\n*Membres* : ${participants.length}\n*Administrateurs* : ${adminCount}\n*Description* : ${chat.description || 'Aucune'}\n
-            `.trim();
+            const infoText = `nobody's bot🤖\n\n📊 *INFORMATIONS DU GROUPE*\n\n*Nom* : ${chat.name}\n*Membres* : ${participants.length}\n*Administrateurs* : ${adminCount}\n*Description* : ${chat.description || 'Aucune description'}`;
         
             await message.reply(infoText);
             console.log('✅ Info groupe envoyée');
 
         } catch (error) {
-            console.error('❌ Erreur info:', error.message);
-            await message.reply("nobody's bot🤖\n\n\n❌ Erreur lors de la récupération des informations");
+            console.error('❌ Erreur info groupe:', error.message);
+            message.reply("nobody's bot🤖\n\n❌ Erreur lors de la récupération des informations");
         }
-    } //c'est OK
+    }
 
+    async handleStatutCommand(message) {
+        if (!this.startTime) {
+            message.reply("nobody's bot🤖\n\n🤖 Bot non connecté");
+            return;
+        }
 
+        const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+        const seconds = uptimeSeconds % 60;
 
-    // ________________________utilitaire_____________________________
-    async cleanup() {
+        let uptimeString = "";
+        if (days > 0) uptimeString += `${days}j `;
+        if (hours > 0) uptimeString += `${hours}h `;
+        if (minutes > 0) uptimeString += `${minutes}m `;
+        uptimeString += `${seconds}s`;
+
+        const responseTime = this.lastCommandTime ? Date.now() - this.lastCommandTime + 'ms' : 'N/A';
+        
+        await message.reply(`nobody's bot🤖\n\n🤖 *STATUT DU BOT*\n\n🟢 En ligne: ${uptimeString}\n⚡ Rapidité: ${responseTime}\n💾 Session: Render /tmp ✅\n🚀 Mode: Ultra-rapide`);
+    }
+
+    async cleanSession() {
         try {
-            if (this.client) {
-                this.client.removeAllListeners();
-                await this.client.destroy();
-                this.client = null;
-            }
-            this.isConnected = false;
-            this.qrCode = null;
-            this.startTime = null;
-            console.log('🧹 Bot arrêté');
+            await fs.rm(this.sessionPath, { recursive: true, force: true });
+            console.log('🧹 Session corrompue nettoyée');
         } catch (error) {
-            console.error('❌ Erreur nettoyage:', error.message);
+            console.log('⚠️ Impossible de nettoyer la session');
+        }
+    }
+
+    async handleDisconnection() {
+        this.isConnected = false;
+        console.log('🔄 Tentative de reconnexion dans 5 secondes...');
+        setTimeout(() => {
+            this.reconnect();
+        }, 5000);
+    }
+
+    async reconnect() {
+        console.log('🔄 Reconnexion automatique...');
+        this.client = null;
+        await this.connect();
+    }
+
+    async getSessionStatus() {
+        try {
+            const files = await fs.readdir(this.sessionPath);
+            return {
+                hasSession: files.length > 0,
+                fileCount: files.length,
+                isConnected: this.isConnected
+            };
+        } catch (error) {
+            return {
+                hasSession: false,
+                fileCount: 0,
+                isConnected: false
+            };
         }
     }
 
@@ -377,10 +344,6 @@ class WhatsappService {
 
     isBotConnected() {
         return this.isConnected;
-    }
-
-    async stop() {
-        await this.cleanup();
     }
 }
 
