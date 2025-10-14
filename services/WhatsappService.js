@@ -10,7 +10,7 @@ class WhatsappService {
         this.qrCode = null;
         this.startTime = null;
         this.lastCommandTime = null;
-        this.sessionPath = '/tmp/.wwebjs_auth'; // Dossier persistant Render
+        this.sessionPath = '/tmp/.wwebjs_auth'; // Dossier persistant Railway
     }
 
     async connect() {
@@ -19,40 +19,86 @@ class WhatsappService {
         }
 
         try {
-            console.log('🚀 Démarrage du bot WhatsApp ultra-rapide...');
+            console.log('🚀 Démarrage du bot WhatsApp sur Railway...');
             console.log('📁 Dossier session:', this.sessionPath);
+            console.log('🛠️ Configuration Puppeteer pour Railway...');
             
             // Assurer que le dossier session existe
             await this.ensureSessionDir();
             
+            // Configuration optimisée pour Railway
+            const puppeteerOptions = {
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--single-process',
+                    '--disable-extensions',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--memory-pressure-off'
+                ]
+            };
+
+            // Utiliser Chromium système sur Railway
+            if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+                puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+                console.log('🔧 Utilisation de Chromium système:', process.env.PUPPETEER_EXECUTABLE_PATH);
+            } else {
+                console.log('🔧 Utilisation de Chromium intégré');
+                // Sur Railway, on peut essayer différents chemins
+                const possiblePaths = [
+                    '/usr/bin/chromium',
+                    '/usr/bin/chromium-browser',
+                    '/usr/bin/google-chrome'
+                ];
+                
+                for (const chromePath of possiblePaths) {
+                    try {
+                        await fs.access(chromePath);
+                        puppeteerOptions.executablePath = chromePath;
+                        console.log('✅ Chromium trouvé:', chromePath);
+                        break;
+                    } catch (e) {
+                        // Continuer à chercher
+                    }
+                }
+            }
+
             this.client = new Client({
                 authStrategy: new LocalAuth({
-                    clientId: "nobodys-bot-render",
-                    dataPath: this.sessionPath // Session dans /tmp/
+                    clientId: "nobodys-bot-railway",
+                    dataPath: this.sessionPath
                 }),
-                puppeteer: {
-                    headless: true,
-                    args: [
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--single-process',
-                        '--no-zygote',
-                        '--disable-gpu',
-                        '--disable-extensions',
-                        '--disable-background-timer-throttling'
-                    ]
-                },
+                puppeteer: puppeteerOptions,
                 webVersionCache: {
                     type: 'remote',
                     remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-                }
+                },
+                takeoverOnConflict: false,
+                restartOnAuthFail: true
             });
 
             this.setupClientEvents();
-            this.client.initialize().catch(error => {
-                console.error('❌ Erreur initialisation:', error.message);
-            });
+            
+            // Initialisation avec gestion d'erreur améliorée
+            setTimeout(() => {
+                this.client.initialize().catch(error => {
+                    console.error('❌ Erreur initialisation:', error.message);
+                    console.log('🔄 Nouvelle tentative dans 10 secondes...');
+                    setTimeout(() => {
+                        this.client.initialize().catch(e => {
+                            console.error('❌ Échec de la nouvelle tentative:', e.message);
+                        });
+                    }, 10000);
+                });
+            }, 2000);
 
             return { success: true };
 
@@ -66,8 +112,12 @@ class WhatsappService {
         try {
             await fs.mkdir(this.sessionPath, { recursive: true });
             console.log('✅ Dossier session créé:', this.sessionPath);
+            
+            // Vérifier les permissions
+            const stats = await fs.stat(this.sessionPath);
+            console.log('📁 Permissions session:', stats.mode.toString(8));
         } catch (error) {
-            // Le dossier existe déjà
+            console.log('📁 Dossier session existe déjà');
         }
     }
 
@@ -86,7 +136,7 @@ class WhatsappService {
         });
 
         this.client.on('authenticated', () => {
-            console.log('🔐 Authentification réussie - Session sauvegardée');
+            console.log('🔐 Authentification réussie - Session sauvegardée dans /tmp/');
         });
 
         this.client.on('auth_failure', (msg) => {
@@ -99,6 +149,10 @@ class WhatsappService {
             this.handleDisconnection();
         });
 
+        this.client.on('loading_screen', (percent, message) => {
+            console.log(`📱 Chargement WhatsApp: ${percent}% - ${message}`);
+        });
+
         // Gestion ultra-rapide des messages
         this.client.on('message_create', async (message) => {
             await this.handleOutgoingMessage(message);
@@ -109,8 +163,13 @@ class WhatsappService {
         try {
             const files = await fs.readdir(this.sessionPath);
             console.log(`📁 Session active - ${files.length} fichiers`);
+            
+            // Log des fichiers de session
+            files.forEach(file => {
+                console.log(`   📄 ${file}`);
+            });
         } catch (error) {
-            console.log('📁 Nouvelle session');
+            console.log('📁 Nouvelle session créée');
         }
     }
 
@@ -122,7 +181,7 @@ class WhatsappService {
         if (!text || !text.startsWith('#')) return;
 
         this.lastCommandTime = Date.now();
-        console.log(`⚡ Commande reçue: "${text}"`);
+        console.log(`⚡ Commande reçue: "${text}" de ${message.to}`);
         
         // Traitement IMMÉDIAT
         await this.handleCommand(message, text);
@@ -135,20 +194,20 @@ class WhatsappService {
         try {
             switch (command) {
                 case 'start':
-                    message.reply("Salut ! Je suis *Nobody*, ton bot WhatsApp ultra-rapide 🤖\nTape #help pour voir toutes les commandes disponibles");
+                    await message.reply("Salut ! Je suis *Nobody*, ton bot WhatsApp ultra-rapide 🤖\nTape #help pour voir toutes les commandes disponibles");
                     break;
                     
                 case 'ping':
                     const responseTime = this.lastCommandTime ? Date.now() - this.lastCommandTime + 'ms' : 'N/A';
-                    message.reply(`nobody's bot🤖\n\n🤖 Pong 🚀!\n⚡ Rapidité: ${responseTime}`);
+                    await message.reply(`nobody's bot🤖\n\n🤖 Pong 🚀!\n⚡ Rapidité: ${responseTime}\n🏠 Hébergement: Railway`);
                     break;
 
                 case 'owner':
-                    message.reply(`*Propriétaires officiels de nobody's bot🤖*\n\n⭐ *👑 Jean Emmanuel Ahossi*\n🎯 Fondateur & Développeur principal\n📞 https://wa.me/2250704526437\n\n⭐ *🔥 Emmanuel Bilson*\n🎯 Co-développeur & Designer\n📞 https://wa.me/2250799637242\n\n👥 Nous sommes 2 étudiants de l'IUA 💙`);
+                    await message.reply(`*Propriétaires officiels de nobody's bot🤖*\n\n⭐ *👑 Jean Emmanuel Ahossi*\n🎯 Fondateur & Développeur principal\n📞 https://wa.me/2250704526437\n\n⭐ *🔥 Emmanuel Bilson*\n🎯 Co-développeur & Designer\n📞 https://wa.me/2250799637242\n\n👥 Nous sommes 2 étudiants de l'IUA 💙`);
                     break;
 
                 case 'help':
-                    message.reply(`🤖 *NOBODY'S BOT* - Commandes Ultra-Rapides\n\n
+                    await message.reply(`🤖 *NOBODY'S BOT* - Commandes Ultra-Rapides\n\n
 #start - Introduction du bot
 #ping - Test de rapidité
 #owner - Contacter les propriétaires  
@@ -156,31 +215,34 @@ class WhatsappService {
 #tagall - Mentionner tous les membres (groupes)
 #pp - Photo de profil d'un contact
 #info - Informations du groupe
-#status - Statut du bot`);
+#status - Statut du bot\n\n
+🚀 *Hébergement:* Railway`);
                     break;
                     
                 case 'tagall':
-                    this.handleTagAllCommand(message);
+                    await this.handleTagAllCommand(message);
                     break;
                     
                 case 'pp':
-                    this.handlePpCommand(message, args.slice(1));
+                    await this.handlePpCommand(message, args.slice(1));
                     break;
                     
                 case 'info':
-                    this.handleInfoCommand(message);
+                    await this.handleInfoCommand(message);
                     break;
 
                 case 'status':
-                    this.handleStatutCommand(message);
+                    await this.handleStatutCommand(message);
                     break;
 
                 default:
-                    message.reply("nobody's bot🤖\n\n❌ Commande inconnue. Tapez #help pour voir le menu complet");
+                    await message.reply("nobody's bot🤖\n\n❌ Commande inconnue. Tapez #help pour voir le menu complet");
             }
+            
+            console.log(`✅ Commande ${command} exécutée avec succès`);
         } catch (error) {
             console.error(`💥 Erreur commande ${command}:`, error.message);
-            message.reply("nobody's bot🤖\n\n❌ Erreur lors de l'exécution de la commande");
+            await message.reply("nobody's bot🤖\n\n❌ Erreur lors de l'exécution de la commande");
         }
     }
 
@@ -188,13 +250,13 @@ class WhatsappService {
         try {
             const chat = await message.getChat();
             if (!chat.isGroup) {
-                message.reply("❌ Cette commande fonctionne uniquement dans les groupes");
+                await message.reply("❌ Cette commande fonctionne uniquement dans les groupes");
                 return;
             }
 
             const participants = chat.participants;
             if (participants.length === 0) {
-                message.reply("❌ Aucun participant dans le groupe");
+                await message.reply("❌ Aucun participant dans le groupe");
                 return;
             }
             
@@ -212,7 +274,7 @@ class WhatsappService {
 
         } catch (error) {
             console.error('❌ Erreur tagall:', error.message);
-            message.reply('❌ Erreur lors de la mention des membres');
+            await message.reply('❌ Erreur lors de la mention des membres');
         }
     }
 
@@ -229,7 +291,7 @@ class WhatsappService {
                 const chat = await message.getChat();
                 contactId = chat.isGroup ? null : message.to;
                 if (!contactId) {
-                    message.reply("❌ Dans un groupe, spécifiez un numéro ou répondez à un message avec #pp");
+                    await message.reply("❌ Dans un groupe, spécifiez un numéro ou répondez à un message avec #pp");
                     return;
                 }
             }
@@ -249,7 +311,7 @@ class WhatsappService {
 
         } catch (error) {
             console.error('❌ Erreur photo profil:', error.message);
-            message.reply('❌ Erreur lors de la récupération de la photo');
+            await message.reply('❌ Erreur lors de la récupération de la photo');
         }
     }
 
@@ -257,7 +319,7 @@ class WhatsappService {
         try {
             const chat = await message.getChat();
             if (!chat.isGroup) {
-                message.reply('❌ Cette commande fonctionne uniquement dans les groupes');
+                await message.reply('❌ Cette commande fonctionne uniquement dans les groupes');
                 return;
             }
 
@@ -271,13 +333,13 @@ class WhatsappService {
 
         } catch (error) {
             console.error('❌ Erreur info groupe:', error.message);
-            message.reply("nobody's bot🤖\n\n❌ Erreur lors de la récupération des informations");
+            await message.reply("nobody's bot🤖\n\n❌ Erreur lors de la récupération des informations");
         }
     }
 
     async handleStatutCommand(message) {
         if (!this.startTime) {
-            message.reply("nobody's bot🤖\n\n🤖 Bot non connecté");
+            await message.reply("nobody's bot🤖\n\n🤖 Bot non connecté");
             return;
         }
 
@@ -295,7 +357,7 @@ class WhatsappService {
 
         const responseTime = this.lastCommandTime ? Date.now() - this.lastCommandTime + 'ms' : 'N/A';
         
-        await message.reply(`nobody's bot🤖\n\n🤖 *STATUT DU BOT*\n\n🟢 En ligne: ${uptimeString}\n⚡ Rapidité: ${responseTime}\n💾 Session: Render /tmp ✅\n🚀 Mode: Ultra-rapide`);
+        await message.reply(`nobody's bot🤖\n\n🤖 *STATUT DU BOT*\n\n🟢 En ligne: ${uptimeString}\n⚡ Rapidité: ${responseTime}\n💾 Session: Railway /tmp ✅\n🚀 Hébergement: Railway\n🐳 Container: Node.js + Chromium`);
     }
 
     async cleanSession() {
