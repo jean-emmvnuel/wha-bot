@@ -2,10 +2,11 @@ const express = require("express");
 const WhatsAppService = require('./services/WhatsappService');
 
 const app = express();
-const PORT = process.env.PORT || 3005;
+const PORT = process.env.PORT || 8080;
 
-// Middleware minimal
+// Middleware
 app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // Route principale
 app.get('/', (req, res) => {
@@ -16,7 +17,7 @@ app.get('/', (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Nobody's Bot - En Ligne 🚀</title>
+        <title>🤖 Nobody's Bot - Railway</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta charset="UTF-8">
         <style>
@@ -161,6 +162,14 @@ app.get('/', (req, res) => {
                 font-family: monospace;
             }
             
+            .server-info {
+                background: rgba(255, 255, 255, 0.05);
+                padding: 10px;
+                border-radius: 8px;
+                margin: 10px 0;
+                font-size: 0.8em;
+            }
+            
             @media (max-width: 600px) {
                 .container {
                     padding: 20px;
@@ -180,7 +189,13 @@ app.get('/', (req, res) => {
     <body>
         <div class="container">
             <div class="logo">🤖 Nobody's Bot</div>
-            <div class="subtitle">Bot WhatsApp Ultra-Rapide</div>
+            <div class="subtitle">Déployé sur Railway 🚄</div>
+            
+            <div class="server-info">
+                <strong>🛠️ Environnement:</strong> Production Railway<br>
+                <strong>🔧 Port:</strong> ${PORT}<br>
+                <strong>🐳 Container:</strong> Node.js + Chromium
+            </div>
     `;
 
     if (isConnected) {
@@ -195,7 +210,7 @@ app.get('/', (req, res) => {
                     <strong>📊 Statut:</strong><br>En ligne 🟢
                 </div>
                 <div class="info-item">
-                    <strong>💾 Stockage:</strong><br>Render /tmp ✅
+                    <strong>💾 Stockage:</strong><br>Railway /tmp ✅
                 </div>
             </div>
             
@@ -247,7 +262,11 @@ app.get('/', (req, res) => {
             </div>
             
             <div class="instructions">
-                Le bot est en cours de démarrage. Cette page se rafraîchira automatiquement dès que le QR code sera disponible.
+                Le bot est en cours de démarrage sur l'infrastructure Railway.<br><br>
+                <strong>Chargement en cours:</strong><br>
+                • Serveur Express ✅<br>
+                • Client WhatsApp...<br>
+                • Session Chromium...
             </div>
             
             <div class="actions">
@@ -258,7 +277,7 @@ app.get('/', (req, res) => {
 
     html += `
             <div class="footer">
-                🚀 Déployé sur Render • Session persistante • Ultra-rapide
+                🚄 Propulsé par Railway • Session persistante • Ultra-rapide
             </div>
         </div>
         
@@ -311,7 +330,8 @@ app.get('/api/status', (req, res) => {
         connected: WhatsAppService.isBotConnected(),
         hasQR: WhatsAppService.getQRCode() !== null,
         timestamp: new Date().toISOString(),
-        server: 'Render'
+        server: 'Railway',
+        port: PORT
     });
 });
 
@@ -323,39 +343,42 @@ app.get('/api/session', async (req, res) => {
             connected: WhatsAppService.isBotConnected(),
             hasSession: sessionStatus.hasSession,
             sessionFiles: sessionStatus.fileCount,
-            uptime: WhatsAppService.startTime ? Date.now() - WhatsAppService.startTime : 0
+            uptime: WhatsAppService.startTime ? Date.now() - WhatsAppService.startTime : 0,
+            environment: process.env.NODE_ENV || 'development'
         });
     } catch (error) {
         res.json({ error: 'Impossible de récupérer les infos session' });
     }
 });
 
-// Route de santé pour Render
+// Route de santé pour Railway
 app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         service: "Nobody's Bot",
         bot_connected: WhatsAppService.isBotConnected(),
         timestamp: new Date().toISOString(),
-        version: "2.0.0"
+        version: "2.0.0-railway",
+        server: "Railway"
     });
 });
 
 // Redirection pour toutes les autres routes
-app.use((req, res) => {
+app.use('*', (req, res) => {
     res.redirect('/');
 });
 
 // Démarrer le bot
-console.log('🚀 Lancement de Nobody\'s Bot en production...');
+console.log('🚀 Lancement de Nobody\'s Bot sur Railway...');
 WhatsAppService.connect();
 
 // Démarrer le serveur
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`📍 Serveur démarré sur le port ${PORT}`);
-    console.log(`🌐 Interface: http://localhost:${PORT}`);
+    console.log(`🌐 URL publique: Voir le domaine Railway`);
     console.log(`💚 Route santé: /health`);
     console.log(`📊 API Statut: /api/status`);
+    console.log(`🛠️ Environnement: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // Gestion propre de l'arrêt
@@ -365,6 +388,6 @@ process.on('SIGINT', async () => {
 });
 
 process.on('SIGTERM', async () => {
-    console.log('\n🛑 Arrêt demandé par Render...');
+    console.log('\n🛑 Arrêt demandé par Railway...');
     process.exit(0);
 });
