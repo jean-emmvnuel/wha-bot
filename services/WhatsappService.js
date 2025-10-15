@@ -10,7 +10,8 @@ class WhatsappService {
         this.qrCode = null;
         this.startTime = null;
         this.lastCommandTime = null;
-        this.sessionPath = '/tmp/.wwebjs_auth'; // Dossier persistant Railway
+        this.sessionPath = '/tmp/.wwebjs_auth';
+        this.qrGenerated = false; // Variable pour limiter les générations de QR
     }
 
     async connect() {
@@ -120,20 +121,25 @@ class WhatsappService {
             console.log('📁 Dossier session existe déjà');
         }
     }
- let qrGenerated = false;
+
     setupClientEvents() {
+        // Variable pour limiter les générations de QR code
+        let qrGenerated = false;
+
         this.client.on('qr', async (qr) => {
-        if (!qrGenerated) {
-            console.log('📱 QR Code généré - Scannez avec WhatsApp');
-            this.qrCode = await qrcode.toDataURL(qr);
-            qrGenerated = true;
-            
-            // Réinitialiser après 30 secondes au cas où
-            setTimeout(() => {
-                qrGenerated = false;
-            }, 30000);
-        }
-    });
+            if (!qrGenerated) {
+                console.log('📱 QR Code généré - Scannez avec WhatsApp');
+                this.qrCode = await qrcode.toDataURL(qr);
+                qrGenerated = true;
+                
+                // Réinitialiser après 30 secondes si besoin
+                setTimeout(() => {
+                    qrGenerated = false;
+                }, 30000);
+            } else {
+                console.log('📱 QR Code déjà généré - En attente de scan');
+            }
+        });
 
         this.client.on('ready', () => {
             console.log('✅ BOT CONNECTÉ - Prêt à recevoir les commandes');
