@@ -120,12 +120,20 @@ class WhatsappService {
             console.log('📁 Dossier session existe déjà');
         }
     }
-
+ let qrGenerated = false;
     setupClientEvents() {
         this.client.on('qr', async (qr) => {
+        if (!qrGenerated) {
             console.log('📱 QR Code généré - Scannez avec WhatsApp');
             this.qrCode = await qrcode.toDataURL(qr);
-        });
+            qrGenerated = true;
+            
+            // Réinitialiser après 30 secondes au cas où
+            setTimeout(() => {
+                qrGenerated = false;
+            }, 30000);
+        }
+    });
 
         this.client.on('ready', () => {
             console.log('✅ BOT CONNECTÉ - Prêt à recevoir les commandes');
