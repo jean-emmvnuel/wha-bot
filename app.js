@@ -69,7 +69,7 @@ WhatsAppService.connect();
 // Démarrer le serveur
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`📍 Serveur démarré sur le port ${PORT}`);
-    console.log(`🌐 Interface: http://localhost:5173`);
+    console.log(`🌐 Interface: https://nobody-bot1-front.netlify.app/`);
     console.log(`📊 API Statut: /api/connection`);
     console.log(`API qrCode: /api/qrcode`);
 });
