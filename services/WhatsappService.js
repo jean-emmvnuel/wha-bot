@@ -10,7 +10,7 @@ class WhatsappService {
         this.qrCode = null;
         this.startTime = null;
         this.lastCommandTime = null;
-        this.sessionPath = '../session/.wwebjs_auth'; // Dossier contenant la session de l'utilisateur
+        this.sessionPath = './session/.wwebjs_auth'; // Dossier contenant la session de l'utilisateur
     }
 
     async connect() {
@@ -183,6 +183,7 @@ class WhatsappService {
             message.reply("nobody's bot🤖\n\n❌ Erreur lors de l'exécution de la commande");
         }
     }
+
 
     async handleTagAllCommand(message) {
         try {
