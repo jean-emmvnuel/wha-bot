@@ -64,12 +64,15 @@ app.use((req, res) => {
 
 // Démarrer le bot
 console.log('🚀 Lancement de Nobody\'s Bot en production...');
+setInterval(() => {
+    console.log(`Bot est connecté depuis ${new Date().toISOString()}`);
+}, 5 * 60 * 1000); // Toutes les 5 minutes
 WhatsAppService.connect();
 
 // Démarrer le serveur
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`📍 Serveur démarré sur le port ${PORT}`);
-    console.log(`🌐 Interface: https://nobody-bot1-front.netlify.app/`);
+    console.log(`🌐 Interface: https://nobody-bot1-front.netlify.app`);
     console.log(`📊 API Statut: /api/connection`);
     console.log(`API qrCode: /api/qrcode`);
 });
